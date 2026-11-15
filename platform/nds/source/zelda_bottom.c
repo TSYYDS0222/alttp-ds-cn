@@ -15,6 +15,7 @@
 #include "selected-item-border.h"
 #include "life-text.h"
 #include "one-half.h"
+#include "zh_ui_font.h"
 
 enum {
 	kWidth = 256,
@@ -802,16 +803,18 @@ enum {
 	kGearRight = 96,
 	kGearIconY = 24,
 	kGearIconPitch = 20,
-	kGearBottleLabelY = 46,
+	/* Six pixels earlier than the SNES Latin labels: a full 16x16 CJK cell
+	 * then ends exactly where the icon row below it begins. */
+	kGearBottleLabelY = 40,
 	kGearBottleY = 56,
 	kGearPendantPitch = 18,
 	/* The heart shape starts one pixel into its tile. */
 	kGearHeartY = 88 - 1,
 	kGearHeartX = kGearLeft - 1,
-	kGearCrystalLabelY = 78,
+	kGearCrystalLabelY = 72,
 	kGearCrystalY = 88,
 	kGearCrystalRowStep = 10,
-	kGearPiecesLabelY = 122,
+	kGearPiecesLabelY = 116,
 	kGearPiecesY = 132,
 	/* The key icon is 8 tall, centered on the 16-tall heart piece icon. */
 	kGearKeyY = kGearPiecesY + 4,
@@ -998,77 +1001,91 @@ static void build_gear(HudGear *g)
 		  g->keys >= 0 ? kGKeyDigit0 + g->keys % 10 : 0);
 }
 
-/* Capital letters 5 pixels wide and 7 tall, like the panel titles; I is 3
- * wide. One byte a row, the left pixel in the top bit of the width. */
-typedef struct {
-	char ch;
-	u8 w;
-	u8 row[7];
-} Glyph;
+/* The panel is an 8bpp bitmap composed one scanline at a time. These are
+ * the 16x16 Chinese cells baked by tools/zh/make_ui_font.py, scaled down to
+ * h rows so a label still fits in the ten pixels between two icon rows. */
+static int zh_text_width(const unsigned short *text, int h)
+{
+	int n = 0;
 
-static const Glyph kGlyphs[] = {
-	{ 'A', 5, { 0x0e, 0x11, 0x11, 0x1f, 0x11, 0x11, 0x11 } },
-	{ 'B', 5, { 0x1e, 0x11, 0x11, 0x1e, 0x11, 0x11, 0x1e } },
-	{ 'C', 5, { 0x0e, 0x11, 0x10, 0x10, 0x10, 0x11, 0x0e } },
-	{ 'D', 5, { 0x1e, 0x11, 0x11, 0x11, 0x11, 0x11, 0x1e } },
-	{ 'E', 5, { 0x1f, 0x10, 0x10, 0x1e, 0x10, 0x10, 0x1f } },
-	{ 'H', 5, { 0x11, 0x11, 0x11, 0x1f, 0x11, 0x11, 0x11 } },
-	{ 'I', 3, { 0x07, 0x02, 0x02, 0x02, 0x02, 0x02, 0x07 } },
-	{ 'K', 5, { 0x11, 0x12, 0x14, 0x18, 0x14, 0x12, 0x11 } },
-	{ 'L', 5, { 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x1f } },
-	{ 'N', 5, { 0x11, 0x19, 0x15, 0x13, 0x11, 0x11, 0x11 } },
-	{ 'O', 5, { 0x0e, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0e } },
-	{ 'P', 5, { 0x1e, 0x11, 0x11, 0x1e, 0x10, 0x10, 0x10 } },
-	{ 'R', 5, { 0x1e, 0x11, 0x11, 0x1e, 0x14, 0x12, 0x11 } },
-	{ 'S', 5, { 0x0f, 0x10, 0x10, 0x0e, 0x01, 0x01, 0x1e } },
-	{ 'T', 5, { 0x1f, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04 } },
-	{ 'Y', 5, { 0x11, 0x11, 0x0a, 0x04, 0x04, 0x04, 0x04 } }
-};
+	if (!text)
+		return 0;
+	while (*text != 0xffff) {
+		n++;
+		text++;
+	}
+	return n * (h + 1);
+}
 
-enum { kGlyphH = 7, kSpaceW = 3 };
+/* Downsample 16x16 to hxh by OR-ing every source pixel that falls in a
+ * destination cell. Picking a single source row/column instead drops whole
+ * strokes at this size and turns a Chinese label into noise. */
+static void draw_zh_row(u8 *line, int y, int x, int top,
+			const unsigned short *text, u8 color, int h)
+{
+	const unsigned short *p;
+	int r = y - top;
+	int cx = x;
+
+	if (r < 0 || r >= h || !text)
+		return;
+	for (p = text; *p != 0xffff; p++) {
+		unsigned int id = *p;
+		int sy0, sy1, col;
+
+		if (id >= zh_ui_font_count)
+			continue;
+		sy0 = r * 16 / h;
+		sy1 = (r + 1) * 16 / h;
+		if (sy1 <= sy0)
+			sy1 = sy0 + 1;
+		for (col = 0; col < h; col++) {
+			int sx0 = col * 16 / h;
+			int sx1 = (col + 1) * 16 / h;
+			int sy, ink = 0;
+
+			if (sx1 <= sx0)
+				sx1 = sx0 + 1;
+			for (sy = sy0; sy < sy1 && sy < 16 && !ink; sy++) {
+				unsigned int bits =
+					((unsigned int)zh_ui_font_bits[id][sy * 2] << 8) |
+					zh_ui_font_bits[id][sy * 2 + 1];
+				int sx;
+
+				for (sx = sx0; sx < sx1 && sx < 16; sx++) {
+					if (bits & (0x8000u >> sx)) {
+						ink = 1;
+						break;
+					}
+				}
+			}
+			if (ink)
+				line[cx + col] = color;
+		}
+		cx += h + 1;
+	}
+}
+
+/* Full 16x16 cells: the labels were moved up so they end at the icon row. */
+enum { kGlyphH = 16, kZhTitleH = 12 };
 
 typedef struct {
 	int x, y;
-	const char *text;
+	const unsigned short *text;
 	u8 dungeon_only;
 } GearLabel;
 
 static const GearLabel kGearLabels[] = {
-	{ kGearLeft, kGearBottleLabelY, "BOTTLES", 0 },
-	{ kGearRight, kGearBottleLabelY, "PENDANTS", 0 },
-	{ kGearRight, kGearCrystalLabelY, "CRYSTALS", 0 },
-	{ kGearLeft, kGearPiecesLabelY, "HEART PIECES", 0 },
-	{ kGearRight, kGearPiecesLabelY, "KEYS", 1 }
+	{ kGearLeft, kGearBottleLabelY, zh_ui_gear_bottles, 0 },
+	{ kGearRight, kGearBottleLabelY, zh_ui_gear_pendants, 0 },
+	{ kGearRight, kGearCrystalLabelY, zh_ui_gear_crystals, 0 },
+	{ kGearLeft, kGearPiecesLabelY, zh_ui_gear_pieces, 0 },
+	{ kGearRight, kGearPiecesLabelY, zh_ui_gear_keys, 1 }
 };
 
 static void draw_label_row(u8 *line, int y, const GearLabel *l)
 {
-	const char *s;
-	int x = l->x;
-	int r = y - l->y;
-
-	if (r < 0 || r >= kGlyphH)
-		return;
-	for (s = l->text; *s; s++) {
-		unsigned i;
-
-		if (*s == ' ') {
-			x += kSpaceW;
-			continue;
-		}
-		for (i = 0; i < sizeof kGlyphs / sizeof kGlyphs[0]; i++) {
-			const Glyph *g = &kGlyphs[i];
-			int col;
-
-			if (g->ch != *s)
-				continue;
-			for (col = 0; col < g->w; col++)
-				if ((g->row[r] >> (g->w - 1 - col)) & 1)
-					line[x + col] = kPalPanelText;
-			x += g->w + 1;
-			break;
-		}
-	}
+	draw_zh_row(line, y, l->x, l->y, l->text, kPalPanelText, kGlyphH);
 }
 
 static void compose_gear(u8 *line, int y)
@@ -1448,12 +1465,44 @@ void ZeldaBottomInput(u32 *held, u32 *down)
 	}
 }
 
+/* GEAR / ITEMS / LIFE are tiny PNGs of 7-pixel capitals. Chinese at that
+ * size is unreadable, so draw the baked 12-pixel cells in their place. */
+static const unsigned short *zh_image_text(const HudImage *im)
+{
+	if (im->pix == (const u8 *)gear_textBitmap)
+		return zh_ui_gear_title;
+	if (im->pix == (const u8 *)items_textBitmap)
+		return zh_ui_items_title;
+	if (im->pix == (const u8 *)life_textBitmap)
+		return zh_ui_life_title;
+	return NULL;
+}
+
 static void draw_image_row(u8 *line, int y, const HudImage *im)
 {
 	int top = im->y;
 	int left = im->x;
 	const u8 *src;
+	const unsigned short *zh;
+	u8 color = im->color ? im->color : im->pal_base;
 	int x;
+
+	zh = zh_image_text(im);
+	if (zh) {
+		int w = zh_text_width(zh, kZhTitleH);
+
+		if (im->box >= 0) {
+			const HudBox *b = &kBoxes[im->box];
+
+			top = b->y + (b->h - kZhTitleH) / 2;
+			left = b->x + (b->w - w) / 2;
+		} else {
+			top = im->y + (im->h - kZhTitleH) / 2;
+			left = im->x + (im->w - w) / 2;
+		}
+		draw_zh_row(line, y, left, top, zh, color, kZhTitleH);
+		return;
+	}
 
 	if (im->box >= 0) {
 		const HudBox *b = &kBoxes[im->box];

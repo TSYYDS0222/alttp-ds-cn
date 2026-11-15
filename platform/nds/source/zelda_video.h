@@ -35,6 +35,8 @@ void ZeldaVideoMenuBegin(void);
 void ZeldaVideoMenuEnd(void);
 void ZeldaVideoMenuClear(void);
 void ZeldaVideoMenuText(int x, int y, const char *text);
+void ZeldaVideoMenuTextZh(int x, int y, const unsigned short *text);
+int ZeldaVideoMenuWidthZh(const unsigned short *text);
 int ZeldaVideoMenuWidth(const char *text);
 uint32 ZeldaVideoRenderFlags(void);
 void ZeldaVideoSetNewRenderer(int on);

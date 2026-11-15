@@ -1,0 +1,229 @@
+diff --git a/src/dialogue_cjk.c b/src/dialogue_cjk.c
+new file mode 100644
+index 0000000..0497900
+--- /dev/null
++++ b/src/dialogue_cjk.c
+@@ -0,0 +1,85 @@
++#include "dialogue_cjk.h"
++
++// The messaging buffer keeps its pixels in 16-bit words: one word holds eight
++// bitplanes of one column, so a pixel column is written as a mask into the
++// byte at that column's half. These are the masks a text row uses, the same
++// ones the letter renderer in messaging.c uses.
++static const uint8_t kColumnMasks[8] = {0x80, 0x40, 0x20, 0x10, 8, 4, 2, 1};
++
++bool DialogueCjk_DecodePage(uint8_t prefix, uint8_t index, uint32_t *out_char) {
++  if (prefix < kDialogueCjkPageFirst || prefix > kDialogueCjkPageLast)
++    return false;
++  *out_char = (uint32_t)(kDialogueCjkFirstChar +
++                         (prefix - kDialogueCjkPageFirst) * 256 + index);
++  return true;
++}
++
++bool DialogueCjk_IsGlyph(int c) {
++  return c >= kDialogueCjkFirstChar;
++}
++
++// Draws one 8x16 half tile at the current pen position and advances the pen.
++// `top` and `bottom` are the half tile's upper and lower eight rows, one bit
++// per pixel, most significant bit leftmost. The pen keeps two values: the
++// leftmost free column of this line (in `arr`) and the next free slot.
++static void RenderHalf(const DialogueCjkTarget *target, const uint8_t *top,
++                       const uint8_t *bottom, int width) {
++  if (width <= 0)
++    return;
++  int slot = (*target->pen)++;
++  uint8_t pen_x = target->arr[slot];
++  target->arr[slot + 1] = (uint8_t)(pen_x + width);
++
++  uint16_t base = (uint16_t)(pen_x * 2);
++  uint8_t *buf = target->buf;
++
++  for (int pass = 0; pass < 2; pass++) {
++    // The second pass draws the tile's lower half eight rows further down the
++    // buffer, which is where the message box keeps it.
++    int line = pass == 0 ? target->line : target->line + 0x150;
++    const uint8_t *src = pass == 0 ? top : bottom;
++    for (int row = 0; row < 16; row += 2) {
++      uint16_t bits = (uint16_t)(src[0] | (src[1] << 8));
++      src += 2;
++      int y = base + line;
++      int x = (y & 0xff0) + row;
++      y = (y >> 1) & 7;
++      int left = width;
++      do {
++        // Each iteration consumes one bit of the row and moves to the next
++        // pixel row, which is the next bitplane of the same column.
++        uint8_t mask = kColumnMasks[y];
++        if (bits & 0x0080)
++          buf[x + 0] ^= mask;
++        else
++          buf[x + 0] &= (uint8_t)~mask;
++        if (bits & 0x8000)
++          buf[x + 1] ^= mask;
++        else
++          buf[x + 1] &= (uint8_t)~mask;
++        bits = (uint16_t)((bits & ~0x8080) << 1);
++      } while (--left && ++y != 8);
++      x += 16;
++      // Whatever did not fit the row's bitplanes continues in the next word,
++      // exactly as the letter renderer stores it.
++      if (bits != 0) {
++        buf[x + 0] = (uint8_t)(bits & 0xff);
++        buf[x + 1] = (uint8_t)(bits >> 8);
++      }
++    }
++  }
++}
++
++void DialogueCjk_Render(const DialogueCjkTarget *target, int glyph) {
++  const uint8_t *base = target->glyphs + glyph * kDialogueCjkGlyphBytes;
++  int total = target->widths[kDialogueCjkFirstChar + glyph];
++
++  // A glyph is drawn as two half tiles side by side: the left one holds the
++  // glyph's left eight columns, the right one the rest. Wide glyphs simply
++  // advance the pen twice as far.
++  RenderHalf(target, base + 0 * kDialogueCjkHalfBytes,
++             base + 2 * kDialogueCjkHalfBytes, total > 8 ? 8 : total);
++  if (total > 8)
++    RenderHalf(target, base + 1 * kDialogueCjkHalfBytes,
++               base + 3 * kDialogueCjkHalfBytes, total - 8);
++}
+diff --git a/src/dialogue_cjk.h b/src/dialogue_cjk.h
+new file mode 100644
+index 0000000..efe1a9e
+--- /dev/null
++++ b/src/dialogue_cjk.h
+@@ -0,0 +1,61 @@
++// Chinese (and, in principle, any 16x16 CJK) text for the dialogue engine.
++//
++// The languages the port builds from the USA cartridge reuse the cartridge's
++// own 8x16 letter alphabet: 256 tiles, one width byte per letter. A Chinese
++// translation cannot: it needs thousands of 16x16 glyphs and a way to name
++// them. Such a language carries two extra pieces in its asset language block,
++// both appended after the standard ones:
++//
++//    font block:  4096 bytes of 256 8x16 letter tiles, then
++//                 glyph_count * 64 bytes, one 16x16 1bpp glyph each
++//                 (top-left, top-right, bottom-left, bottom-right, 16B each)
++//    width block: 99 letter widths, then one total width byte per glyph
++//
++// Its messages then name a glyph with two bytes, a page byte and its index,
++// the shape the Japanese cartridge uses (see Text_DecodeCmd): page 0xf0 holds
++// glyphs 0..255 and 0xf4 holds 1024..1279, named 111 and up in the text
++// engine's alphabet. dialogue_flags bit 2 says the text is page-coded, which
++// both languages share; bit 3 says each glyph is 16x16 and its own width, the
++// shape only a Chinese pack has. The text engine renders such a glyph as two
++// 8x16 half tiles, which is the width of one letter column in the messaging
++// buffer.
++#ifndef ZELDA3_DIALOGUE_CJK_H_
++#define ZELDA3_DIALOGUE_CJK_H_
++
++#include <stdbool.h>
++#include <stdint.h>
++
++enum {
++  kDialogueCjkFlag = 8,           // dialogue_flags bit 3: 16x16 glyphs, own widths
++  kDialogueCjkFirstChar = 111,    // first glyph index a page names
++  kDialogueCjkPageFirst = 0xf0,   // first page byte
++  kDialogueCjkPageLast = 0xf4,    // last one: 5 * 256 glyphs reachable
++  kDialogueCjkFontOffset = 4096,  // glyphs start behind the 256 letter tiles
++  kDialogueCjkGlyphBytes = 64,    // one 16x16 glyph
++  kDialogueCjkHalfBytes = 16,     // one 8x16 half tile
++};
++
++// Decodes one page pair into the character the text engine carries in its
++// command word. Returns false when `prefix` is not a page byte, in which case
++// the caller keeps its normal handling.
++bool DialogueCjk_DecodePage(uint8_t prefix, uint8_t index, uint32_t *out_char);
++
++// True when text character `c` names a glyph rather than a letter.
++bool DialogueCjk_IsGlyph(int c);
++
++// Where the renderer draws: the messaging buffer, the pen state the caller
++// owns, and the language's font block. `glyphs` points at the first 16x16
++// glyph; `widths` at the block's width bytes.
++typedef struct DialogueCjkTarget {
++  uint8_t *buf;           // messaging buffer (16-bit words seen as bytes)
++  uint8_t *arr;           // per-column pen positions
++  uint16_t *pen;          // next free column slot
++  int line;               // first row of the message line
++  const uint8_t *glyphs;  // 16x16 glyphs
++  const uint8_t *widths;  // width bytes, indexed by kDialogueCjkFirstChar + n
++} DialogueCjkTarget;
++
++// Draws one glyph (0-based, as a page names it) at the current pen.
++void DialogueCjk_Render(const DialogueCjkTarget *target, int glyph);
++
++#endif  // ZELDA3_DIALOGUE_CJK_H_
+diff --git a/src/messaging.c b/src/messaging.c
+index 7a7f879..7608b06 100644
+--- a/src/messaging.c
++++ b/src/messaging.c
+@@ -1,5 +1,6 @@
+ #include "messaging.h"
+ #include "zelda_rtl.h"
++#include "dialogue_cjk.h"
+ #include "variables.h"
+ #include "snes/snes_regs.h"
+ #include "dungeon.h"
+@@ -2279,6 +2280,14 @@ enum {
+ #define TEXTCMD_MK(c, x, m) ((c) << 6 | (x) << 1 | (m))
+ 
+ uint32 Text_DecodeCmd(uint8 a, const uint8 *src) {
++  if (g_zenv.dialogue_flags & kDialogueCjkFlag) {
++    // Chinese: a page byte and an index carry a 16x16 glyph of its own width.
++    uint32 cjk_char;
++    if (DialogueCjk_DecodePage(a, *src, &cjk_char))
++      return TEXTCMD_MK(cjk_char, kTextCmd_IsLetter, 1);
++    if (a < kTextCommandStart_US)
++      return TEXTCMD_MK(a, kTextCmd_IsLetter, 0);
++  }
+   if ((g_zenv.dialogue_flags & 1) == 0) {
+     // US encoding
+     if (a < kTextCommandStart_US)
+@@ -2348,6 +2357,16 @@ void Text_LoadCharacterBuffer() {  // 8ec4e2
+   uint8 *dst = messaging_text_buffer;
+   while (src < src_end) {
+     uint8 c = *src++;
++    // A Chinese glyph is a page byte and its index; those page bytes would look
++    // like dictionary references below, so they are copied through as they are
++    // and decoded when the text is drawn.
++    uint32 cjk_char;
++    if ((g_zenv.dialogue_flags & kDialogueCjkFlag) &&
++        DialogueCjk_DecodePage(c, *src, &cjk_char)) {
++      *dst++ = c;
++      *dst++ = *src++;
++      continue;
++    }
+     if (c >= kTextDictBase) {
+       MemBlk blk = FindIndexInMemblk(dictionary, c - kTextDictBase);
+       memcpy(dst, blk.ptr, blk.size);
+@@ -2670,7 +2689,26 @@ void VWF_RenderSingle(int c) {  // 8ecab8
+     vwf_var1 = kVWF_RenderCharacter_linePositions[vwf_curline>>1];
+     vwf_flag_next_line = 0;
+   }
+-  
++
++  // The line advance above must run first: a break arrives as a command and the
++  // glyph after it is the one that moves to the new line. A Chinese glyph is
++  // 16x16 and carries its own width, so it cannot take the letter path below,
++  // which looks its width up in the 99-letter table. The language block keeps
++  // the glyphs behind those letters.
++  if ((g_zenv.dialogue_flags & kDialogueCjkFlag) && DialogueCjk_IsGlyph(c)) {
++    DialogueCjkTarget target = {
++      .buf = (uint8 *)messaging_buf,
++      .arr = vwf_arr,
++      .pen = &vwf_var1,
++      .line = vwf_line_ptr,
++      .glyphs = FindIndexInMemblk(g_zenv.dialogue_font_blk, 0).ptr +
++                kDialogueCjkFontOffset,
++      .widths = FindIndexInMemblk(g_zenv.dialogue_font_blk, 1).ptr,
++    };
++    DialogueCjk_Render(&target, c - kDialogueCjkFirstChar);
++    return;
++  }
++
+   const uint8 *kFontData = FindIndexInMemblk(g_zenv.dialogue_font_blk, 0).ptr;
+   uint8 width = FindIndexInMemblk(g_zenv.dialogue_font_blk, 1).ptr[c];
+   assert(width <= 8);

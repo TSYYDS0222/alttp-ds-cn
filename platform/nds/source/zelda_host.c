@@ -15,6 +15,7 @@
 #include "zelda_audio.h"
 #include "messaging.h"
 #include "variables.h"
+#include "zh_ui_font.h"
 
 const uint8 *g_asset_ptrs[kNumberOfAssets];
 uint32 g_asset_sizes[kNumberOfAssets];
@@ -266,19 +267,28 @@ enum {
 };
 
 static const int kSlotY[kVisible] = { 42, 60, 78, 96, 114 };
-static const char *const kHudChoice[] = { "Top Screen", "Bottom Screen" };
-static const char *const kOnOff[] = { "Off", "On" };
-static const char *const kRunChoice[] = { "Normal", "Double", "Triple" };
+static const unsigned short *const kHudChoice[] = { zh_ui_hud_top, zh_ui_hud_bottom };
+static const unsigned short *const kOnOff[] = { zh_ui_off, zh_ui_on };
+static const unsigned short *const kRunChoice[] = {
+	zh_ui_speed_normal, zh_ui_speed_double, zh_ui_speed_triple
+};
+
+static const unsigned short *settings_label(int row);
+static const unsigned short *settings_value(int row);
 
 static int settings_value_x(void)
 {
-	int label = ZeldaVideoMenuWidth("Low HP Indicator");
-	int mirror = ZeldaVideoMenuWidth("Magic Mirror");
-	int value = ZeldaVideoMenuWidth("Bottom Screen");
-	int x;
+	int label = 0, value = 0, row, x;
 
-	if (mirror > label)
-		label = mirror;
+	for (row = 0; row < kSettingCount; row++) {
+		int w = ZeldaVideoMenuWidthZh(settings_label(row));
+
+		if (w > label)
+			label = w;
+		w = ZeldaVideoMenuWidthZh(settings_value(row));
+		if (w > value)
+			value = w;
+	}
 	x = kLabelX + label + 12;
 
 	if (x < kValueX)
@@ -288,35 +298,35 @@ static int settings_value_x(void)
 	return x;
 }
 
-static const char *settings_label(int row)
+static const unsigned short *settings_label(int row)
 {
 	switch (row) {
 	case kRowHud:
-		return "HUD";
+		return zh_ui_hud;
 	case kRowBeep:
-		return "Low HP Indicator";
+		return zh_ui_low_hp;
 	case kRowSpawn:
-		return "Spawn";
+		return zh_ui_spawn;
 	case kRowMirror:
-		return "Magic Mirror";
+		return zh_ui_mirror;
 	case kRowBomb:
-		return "Bomb Capacity";
+		return zh_ui_bomb;
 	case kRowArrow:
-		return "Arrow Capacity";
+		return zh_ui_arrow;
 	case kRowSpeed:
-		return "Run Speed";
+		return zh_ui_speed;
 	case kRowDark:
-		return "Dark Rooms";
+		return zh_ui_dark;
 	case kRowHair:
-		return "Hair Color";
+		return zh_ui_hair;
 	case kRowMap:
-		return "Button Mapping";
+		return zh_ui_buttons_row;
 	default:
-		return "";
+		return zh_ui_empty;
 	}
 }
 
-static const char *settings_value(int row)
+static const unsigned short *settings_value(int row)
 {
 	switch (row) {
 	case kRowHud:
@@ -324,23 +334,23 @@ static const char *settings_value(int row)
 	case kRowBeep:
 		return kOnOff[beep_on];
 	case kRowSpawn:
-		return spawn_dungeon ? "Dungeon" : "Normal";
+		return spawn_dungeon ? zh_ui_spawn_dungeon : zh_ui_spawn_normal;
 	case kRowMirror:
-		return mirror_free ? "Free" : "Normal";
+		return mirror_free ? zh_ui_mirror_free : zh_ui_mirror_normal;
 	case kRowBomb:
-		return bomb_99 ? "99" : "10";
+		return bomb_99 ? zh_ui_n99 : zh_ui_n10;
 	case kRowArrow:
-		return arrow_99 ? "99" : "30";
+		return arrow_99 ? zh_ui_n99 : zh_ui_n30;
 	case kRowSpeed:
 		return kRunChoice[run_speed];
 	case kRowDark:
-		return dark_bright ? "Bright" : "Normal";
+		return dark_bright ? zh_ui_dark_bright : zh_ui_spawn_normal;
 	case kRowHair:
-		return hair_blonde ? "Blonde" : "Pink";
+		return hair_blonde ? zh_ui_hair_blonde : zh_ui_hair_pink;
 	case kRowMap:
-		return "";
+		return zh_ui_empty;
 	default:
-		return "";
+		return zh_ui_empty;
 	}
 }
 
@@ -365,22 +375,22 @@ static int settings_caret_y(void)
 
 static void settings_draw(void)
 {
-	const char *title = "Settings";
 	int value_x = settings_value_x();
 	int i;
 
 	ZeldaVideoMenuClear();
-	ZeldaVideoMenuText((256 - ZeldaVideoMenuWidth(title)) / 2, kTitleY, title);
+	ZeldaVideoMenuTextZh((256 - ZeldaVideoMenuWidthZh(zh_ui_settings_title)) / 2,
+	                     kTitleY, zh_ui_settings_title);
 	for (i = 0; i < kVisible; i++) {
 		int row = scroll_row + i;
 
 		if (row >= kSettingCount)
 			break;
-		ZeldaVideoMenuText(kLabelX, kSlotY[i], settings_label(row));
-		ZeldaVideoMenuText(value_x, kSlotY[i], settings_value(row));
+		ZeldaVideoMenuTextZh(kLabelX, kSlotY[i], settings_label(row));
+		ZeldaVideoMenuTextZh(value_x, kSlotY[i], settings_value(row));
 	}
-	ZeldaVideoMenuText(kTextX, kSaveY, "Save");
-	ZeldaVideoMenuText(kTextX, kCancelY, "Cancel");
+	ZeldaVideoMenuTextZh(kTextX, kSaveY, zh_ui_save);
+	ZeldaVideoMenuTextZh(kTextX, kCancelY, zh_ui_cancel);
 	ZeldaVideoMenuText(kCaretX, settings_caret_y(), ">");
 }
 
@@ -481,15 +491,16 @@ static const int kMapBit[kSnesButtonCount] = {
 	kSnesUp, kSnesDown, kSnesLeft, kSnesRight
 };
 
-static const char *const kMapLabel[kSnesButtonCount] = {
-	"A Button", "B Button", "X Button", "Y Button",
-	"L Button", "R Button", "Start", "Select",
-	"Up", "Down", "Left", "Right"
+static const unsigned short *const kMapLabel[kSnesButtonCount] = {
+	zh_ui_btn_a, zh_ui_btn_b, zh_ui_btn_x, zh_ui_btn_y,
+	zh_ui_btn_l, zh_ui_btn_r, zh_ui_btn_start, zh_ui_btn_select,
+	zh_ui_dp_up, zh_ui_dp_down, zh_ui_dp_left, zh_ui_dp_right
 };
 
-static const char *const kDsName[kDsButtonCount] = {
-	"DPAD Up", "DPAD Down", "DPAD Left", "DPAD Right",
-	"A", "B", "X", "Y", "L", "R", "Start", "Select"
+static const unsigned short *const kDsName[kDsButtonCount] = {
+	zh_ui_ds_up, zh_ui_ds_down, zh_ui_ds_left, zh_ui_ds_right,
+	zh_ui_btn_a, zh_ui_btn_b, zh_ui_btn_x, zh_ui_btn_y,
+	zh_ui_btn_l, zh_ui_btn_r, zh_ui_btn_start, zh_ui_btn_select
 };
 
 static int buttons_value_x(void)
@@ -499,12 +510,12 @@ static int buttons_value_x(void)
 	int i, w, x;
 
 	for (i = 0; i < kSnesButtonCount; i++) {
-		w = ZeldaVideoMenuWidth(kMapLabel[i]);
+		w = ZeldaVideoMenuWidthZh(kMapLabel[i]);
 		if (w > label)
 			label = w;
 	}
 	for (i = 0; i < kDsButtonCount; i++) {
-		w = ZeldaVideoMenuWidth(kDsName[i]);
+		w = ZeldaVideoMenuWidthZh(kDsName[i]);
 		if (w > value)
 			value = w;
 	}
@@ -537,12 +548,12 @@ static int buttons_caret_y(void)
 
 static void buttons_draw(void)
 {
-	const char *title = "Button Mapping";
 	int value_x = buttons_value_x();
 	int i;
 
 	ZeldaVideoMenuClear();
-	ZeldaVideoMenuText((256 - ZeldaVideoMenuWidth(title)) / 2, kTitleY, title);
+	ZeldaVideoMenuTextZh((256 - ZeldaVideoMenuWidthZh(zh_ui_buttons_row)) / 2,
+	                     kTitleY, zh_ui_buttons_row);
 	for (i = 0; i < kVisible; i++) {
 		int row = scroll_row + i;
 		int ds;
@@ -552,11 +563,11 @@ static void buttons_draw(void)
 		ds = map_draft[kMapBit[row]];
 		if ((unsigned)ds >= kDsButtonCount)
 			ds = kDsA;
-		ZeldaVideoMenuText(kLabelX, kSlotY[i], kMapLabel[row]);
-		ZeldaVideoMenuText(value_x, kSlotY[i], kDsName[ds]);
+		ZeldaVideoMenuTextZh(kLabelX, kSlotY[i], kMapLabel[row]);
+		ZeldaVideoMenuTextZh(value_x, kSlotY[i], kDsName[ds]);
 	}
-	ZeldaVideoMenuText(kTextX, kSaveY, "Save");
-	ZeldaVideoMenuText(kTextX, kCancelY, "Cancel");
+	ZeldaVideoMenuTextZh(kTextX, kSaveY, zh_ui_save);
+	ZeldaVideoMenuTextZh(kTextX, kCancelY, zh_ui_cancel);
 	ZeldaVideoMenuText(kCaretX, buttons_caret_y(), ">");
 }
 
@@ -887,7 +898,9 @@ void ZeldaHostInit(void)
 	g_zenv.ppu->extraLeftRight = 0;
 	g_wanted_zelda_features = 0;
 	ZeldaEnableMsu(0);
-	ZeldaSetLanguage(NULL);
+	/* This build carries one language: the Chinese pack. Name it, because
+	 * ZeldaSetLanguage(NULL) falls back to the cartridge's own flags. */
+	ZeldaSetLanguage("zh");
 	ZeldaVideoInit();
 	ZeldaSaveMount();
 	ZeldaAudioInit();

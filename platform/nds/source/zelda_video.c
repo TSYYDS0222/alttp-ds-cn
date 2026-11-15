@@ -7,6 +7,8 @@
 #include "zelda_video.h"
 #include "zelda_bottom.h"
 #include "bottom-screen-idle.h"
+#include "zh_ui_font.h"
+#include "zh_select.h"
 
 enum {
 	kCropY = 16
@@ -158,6 +160,10 @@ void ZeldaVideoComposeSprites(void)
 {
 	if (!g_zenv.ppu)
 		return;
+	/* The file-select screens keep re-uploading their English BG3 stripes;
+	 * put the Chinese version in after the frame has run, before the maps
+	 * are built from VRAM. */
+	ZeldaZhSelectPatch();
 	ZeldaHwComposeSprites();
 	/* Map entries, while this picture is still up. The blank then copies
 	 * them with the scroll, instead of a frame late. */
@@ -306,6 +312,48 @@ int ZeldaVideoMenuWidth(const char *text)
 		return 0;
 	while (*text)
 		w += menu_advance(font_code(*text++));
+	return w;
+}
+
+/* 16x16 menu glyphs: one baked cell per character (tools/zh/make_ui_font.py).
+ * The overlay cannot use the dialogue font here - that one holds the
+ * translation's own glyphs, whose numbering nothing outside the pack knows. */
+static int zh_glyph(int x, int y, unsigned int id)
+{
+	static const u16 kInkZh = RGB15(31, 31, 31) | BIT(15);
+	const unsigned char *bits;
+	int width, row, col;
+
+	width = (id < zh_ui_font_count) ? zh_ui_font_width[id] : 6;
+	if (!menu_fb || id >= zh_ui_font_count)
+		return width;
+	bits = zh_ui_font_bits[id];
+	for (row = 0; row < 16; row++) {
+		unsigned int line = ((unsigned int)bits[row * 2] << 8) | bits[row * 2 + 1];
+
+		for (col = 0; col < width; col++)
+			if (line & (0x8000u >> col))
+				menu_plot(x + col, y + row, kInkZh);
+	}
+	return width;
+}
+
+void ZeldaVideoMenuTextZh(int x, int y, const unsigned short *text)
+{
+	if (!menu_fb || !text)
+		return;
+	while (*text != 0xffff)
+		x += zh_glyph(x, y, *text++);
+}
+
+int ZeldaVideoMenuWidthZh(const unsigned short *text)
+{
+	int w = 0;
+
+	if (!text)
+		return 0;
+	while (*text != 0xffff)
+		w += zh_ui_font_width[*text++];
 	return w;
 }
 
