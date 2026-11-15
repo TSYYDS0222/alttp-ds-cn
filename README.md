@@ -139,5 +139,5 @@ alttp-ds/
 - [zelda-alttp-3ds](https://github.com/EstebanPdN/zelda-alttp-3ds) I based much of my UI off the designs in this port.
 - [devkitPro](https://devkitpro.org/), libnds, and Calico, for the DS toolchain.
 - [melonDS](https://melonds.melonemu.org/), for the emulator used throughout development.
-
+  [zelda-3](https://github.com/sxunix/zelda3)CN
 *The Legend of Zelda* and *A Link to the Past* are trademarks of Nintendo. No Nintendo code or assets are distributed with this project.
