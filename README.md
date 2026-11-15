@@ -82,14 +82,14 @@ You can remap the controls however you like in the settings menu.
 
 ### 1. Clone
 
-The game logic is in the `vendor/zelda3` submodule, so clone with submodules:
+This Chinese branch vendors the zelda3 sources directly, so no submodule checkout is needed:
 
 ```sh
-git clone --recurse-submodules https://github.com/JimmyGlasscock/alttp-ds.git
-cd alttp-ds
+git clone -b zh-cn https://github.com/TSYYDS0222/alttp-ds-cn.git
+cd alttp-ds-cn
 ```
 
-If you already cloned without them: `git submodule update --init`.
+The upstream port is [JimmyGlasscock/alttp-ds](https://github.com/JimmyGlasscock/alttp-ds).
 
 ### 2. Add your ROM
 
@@ -109,6 +109,16 @@ On Windows, `py build.py` does the same thing. Either command uses `.venv` when 
 
 `lttp-ds.nds` is generated with the game data inside it. If that data is not from a USA ROM, the bottom screen says `Invalid assets file` and the game waits there.
 
+## Simplified Chinese build
+
+This branch adds a Simplified Chinese translation; see `tools/zh/README.md` for the full notes. Build with:
+
+```sh
+python3 tools/zh/build_zh.py --rom path/to/zelda3.sfc
+```
+
+`tools/zh/zh.bps` (the translated dialogue and font pack) is **not committed**: download it from the [frilxy/zelda-alttp-3ds-cn](https://github.com/frilxy/zelda-alttp-3ds-cn) releases and put it in `tools/zh/` before building. The ROM and all extracted assets are likewise not in this repository.
+
 ## Saves
 
 - On a flashcart the save is an 8 KB `.sav` in TWiLight Menu++'s save location, named after the ROM. It holds the three game slots and your Settings. melonDS folder sync still writes `lttp-ds.sav` in the synced folder.
@@ -123,7 +133,7 @@ These zelda3 extras are left out on purpose, because the DS cannot run them or h
 
 ```
 alttp-ds/
-  vendor/zelda3/        game logic, PPU and audio code (git submodule)
+  vendor/zelda3/        game logic, PPU and audio code (vendored sources)
   platform/nds/
     source/             ARM9: host, video, HUD, map, save, audio
     arm7/               ARM7: sound-channel driver
@@ -136,6 +146,9 @@ alttp-ds/
 ## Credits
 
 - [snesrev/zelda3](https://github.com/snesrev/zelda3) and its contributors, for the C reimplementation, the asset tool, and the PPU and DSP code this port builds on.
+- [JimmyGlasscock/alttp-ds](https://github.com/JimmyGlasscock/alttp-ds), the NDS port this repository is forked from.
+- [frilxy/zelda-alttp-3ds-cn](https://github.com/frilxy/zelda-alttp-3ds-cn), for the Simplified Chinese translation and the 16x16 font pack (`zh.bps`) used by this branch.
+- [sxunix/zelda3](https://github.com/sxunix/zelda3) — 汉化作者 (the Chinese translation author); the CJK text rendering in this branch follows that work.
 - [zelda-alttp-3ds](https://github.com/EstebanPdN/zelda-alttp-3ds) I based much of my UI off the designs in this port.
 - [devkitPro](https://devkitpro.org/), libnds, and Calico, for the DS toolchain.
 - [melonDS](https://melonds.melonemu.org/), for the emulator used throughout development.
