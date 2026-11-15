@@ -1,3 +1,62 @@
+diff --git a/README.md b/README.md
+index a48619d..8b6d6fb 100644
+--- a/README.md
++++ b/README.md
+@@ -82,14 +82,14 @@ You can remap the controls however you like in the settings menu.
+ 
+ ### 1. Clone
+ 
+-The game logic is in the `vendor/zelda3` submodule, so clone with submodules:
++This Chinese branch vendors the zelda3 sources directly, so no submodule checkout is needed:
+ 
+ ```sh
+-git clone --recurse-submodules https://github.com/JimmyGlasscock/alttp-ds.git
+-cd alttp-ds
++git clone -b zh-cn https://github.com/TSYYDS0222/alttp-ds-cn.git
++cd alttp-ds-cn
+ ```
+ 
+-If you already cloned without them: `git submodule update --init`.
++The upstream port is [JimmyGlasscock/alttp-ds](https://github.com/JimmyGlasscock/alttp-ds).
+ 
+ ### 2. Add your ROM
+ 
+@@ -109,6 +109,16 @@ On Windows, `py build.py` does the same thing. Either command uses `.venv` when
+ 
+ `lttp-ds.nds` is generated with the game data inside it. If that data is not from a USA ROM, the bottom screen says `Invalid assets file` and the game waits there.
+ 
++## Simplified Chinese build
++
++This branch adds a Simplified Chinese translation; see `tools/zh/README.md` for the full notes. Build with:
++
++```sh
++python3 tools/zh/build_zh.py --rom path/to/zelda3.sfc
++```
++
++`tools/zh/zh.bps` (the translated dialogue and font pack) is **not committed**: download it from the [frilxy/zelda-alttp-3ds-cn](https://github.com/frilxy/zelda-alttp-3ds-cn) releases and put it in `tools/zh/` before building. The ROM and all extracted assets are likewise not in this repository.
++
+ ## Saves
+ 
+ - On a flashcart the save is an 8 KB `.sav` in TWiLight Menu++'s save location, named after the ROM. It holds the three game slots and your Settings. melonDS folder sync still writes `lttp-ds.sav` in the synced folder.
+@@ -123,7 +133,7 @@ These zelda3 extras are left out on purpose, because the DS cannot run them or h
+ 
+ ```
+ alttp-ds/
+-  vendor/zelda3/        game logic, PPU and audio code (git submodule)
++  vendor/zelda3/        game logic, PPU and audio code (vendored sources)
+   platform/nds/
+     source/             ARM9: host, video, HUD, map, save, audio
+     arm7/               ARM7: sound-channel driver
+@@ -136,6 +146,9 @@ alttp-ds/
+ ## Credits
+ 
+ - [snesrev/zelda3](https://github.com/snesrev/zelda3) and its contributors, for the C reimplementation, the asset tool, and the PPU and DSP code this port builds on.
++- [JimmyGlasscock/alttp-ds](https://github.com/JimmyGlasscock/alttp-ds), the NDS port this repository is forked from.
++- [frilxy/zelda-alttp-3ds-cn](https://github.com/frilxy/zelda-alttp-3ds-cn), for the Simplified Chinese translation and the 16x16 font pack (`zh.bps`) used by this branch.
++- [sxunix/zelda3](https://github.com/sxunix/zelda3) — 汉化作者 (the Chinese translation author); the CJK text rendering in this branch follows that work.
+ - [zelda-alttp-3ds](https://github.com/EstebanPdN/zelda-alttp-3ds) I based much of my UI off the designs in this port.
+ - [devkitPro](https://devkitpro.org/), libnds, and Calico, for the DS toolchain.
+ - [melonDS](https://melonds.melonemu.org/), for the emulator used throughout development.
 diff --git a/platform/nds/include/zh_select.h b/platform/nds/include/zh_select.h
 new file mode 100644
 index 0000000..5fe3430
@@ -650,10 +709,10 @@ index 9b53654..6b9b8a6 100644
  void ZeldaVideoSetNewRenderer(int on);
 diff --git a/platform/nds/source/zh_select.c b/platform/nds/source/zh_select.c
 new file mode 100644
-index 0000000..7ceb699
+index 0000000..2b4cef0
 --- /dev/null
 +++ b/platform/nds/source/zh_select.c
-@@ -0,0 +1,214 @@
+@@ -0,0 +1,185 @@
 +/* Chinese titles for the file-select, copy, erase and name-entry screens.
 + *
 + * Those screens are not part of the 397 translated dialogue messages: their
@@ -687,36 +746,8 @@ index 0000000..7ceb699
 +	kZhBankEnd = 0x200,    /* tile 0x200 would wrap to VRAM 0 */
 +	kZhAttr = 0x1800,      /* palette 6, low priority */
 +	kZhSpaceTop = 0x18a9,  /* the font's blank tile, top half */
-+	kZhSpaceBot = 0x18b9,  /* ... and its bottom half */
-+	/* The Chinese pack maps tile 0xaf to a comma, but the cartridge's
-+	 * name-entry keyboard indexes 0xaf as the letter I. Leave the pack's
-+	 * font alone (all its commas stay commas) and give this single keyboard
-+	 * cell its own I glyph in two otherwise unused BG3 tiles. */
-+	kZhITop = 0x1e0,       /* VRAM 0x7f00 */
-+	kZhIBottom = 0x1f0,    /* VRAM 0x7f80, the font's usual +0x10 half */
-+	kZhNameIRow = 16,      /* first row of the keyboard's A-J line */
-+	kZhNameICol = 18       /* ninth cell: A B C D E F G H I J */
++	kZhSpaceBot = 0x18b9   /* ... and its bottom half */
 +};
-+
-+/* The USA font's I (tiles 0xaf / 0xbf): eight 2bpp words per half. */
-+static const uint16 kZhIGlyph[16] = {
-+	0x0000, 0x0038, 0x1028, 0x1028, 0x1028, 0x1028, 0x1028, 0x1028,
-+	0x1028, 0x1028, 0x1028, 0x1028, 0x1028, 0x0038, 0x0000, 0x0000
-+};
-+
-+static void zh_name_i(uint16 *vram)
-+{
-+	int i;
-+
-+	for (i = 0; i < 8; i++) {
-+		vram[kZhTiles + kZhITop * 8 + i] = kZhIGlyph[i];
-+		vram[kZhTiles + kZhIBottom * 8 + i] = kZhIGlyph[8 + i];
-+	}
-+	vram[kZhMap + kZhNameIRow * 32 + kZhNameICol] =
-+		(uint16)(kZhAttr | kZhITop);
-+	vram[kZhMap + (kZhNameIRow + 1) * 32 + kZhNameICol] =
-+		(uint16)(kZhAttr | kZhIBottom);
-+}
 +
 +typedef struct {
 +	uint8 row;             /* first of the two 8-pixel rows */
@@ -862,7 +893,6 @@ index 0000000..7ceb699
 +		break;
 +	case 4:
 +		zh_screen(kLinesName, sizeof kLinesName / sizeof kLinesName[0], vram);
-+		zh_name_i(vram);
 +		break;
 +	default:
 +		break;
@@ -1135,10 +1165,10 @@ index 0000000..ecb8533
 +const unsigned short zh_ui_empty[] = { 0xffff };
 diff --git a/tools/zh/README.md b/tools/zh/README.md
 new file mode 100644
-index 0000000..98d48c1
+index 0000000..7b208a3
 --- /dev/null
 +++ b/tools/zh/README.md
-@@ -0,0 +1,143 @@
+@@ -0,0 +1,150 @@
 +# 中文化（简体中文）说明
 +
 +`alttp-ds` 是 zelda3 重制工程的 NDS 移植（ARM9 原生运行游戏逻辑）。本目录把它
@@ -1197,17 +1227,24 @@ index 0000000..98d48c1
 +美版卡带的 CRC32（0x777aac2f），换别的 ROM 会拒绝。翻译与字模版权归
 +frilxy/zelda-alttp-3ds-cn 及其译者，引擎代码仍是 zelda3 的 MIT 许可。
 +
-+## 字母字库的一个坑
++## 字母字库与标点的一个坑
 +
-+3DS 汉化包自带一套 4096 字节的拉丁字库，其中约 383 字节与美版卡带不同：
-+tile `0xaf` 在汉化字库里是**逗号**，而卡带的改名界面字母表按 tile 索引把
-+`0xaf` 当字母 **I** 用。两者冲突：整块换回美版字库能让 I 回来，但汉化字库
-+里所有用 `0xaf` 的逗号也会跟着变成 I；反过来则 I 一直显示成逗号。
++3DS 汉化包自带一套拉丁字库，把一段槽位改成了中文标点：「，」占 code `0x5f`
++（tile `0xaf`），「。」占 code `0x60`。而卡带的改名界面字母表恰好按 tile 索引
++把 `0xaf` 当字母 **I** 用 —— 这就是 I 显示成逗号的根因。
 +
-+所以字库保持汉化版原样不动，改的是那一格 tilemap：`zh_select.c` 在改名界面
-+给第九个字母格（BG3 tilemap row 16/17、col 18）单独造一对私有字形 tile
-+（`0x1e0`/`0x1f0`，内容是美版字库的 I 点阵），并把这两条 tilemap 条目指过去。
-+其余逗号、中文对白、CJK 字形与宽度表完全不受影响。
++只把字库换回美版并不够：对白里那些 `0x5f`/`0x60` 会变成字母。最终做法是两件事
++一起做：
++
++1. 字库数据区前 4096 字节整体换回美版原版（CJK 字形从偏移 4096 开始，宽度表
++   是独立块，都不动），I 与小写字母全部回来。
++2. 对白文本里把 `0x5f`/`0x60` 换成卡带自己的英文标点码。**这个引擎不用 ASCII**：
++   字形 tile 是 `(code & 0x70) * 2 + (code & 0xf)`，所以 `,` 是 `0x42`（tile
++   `0x82`）、`.` 是 `0x41`（tile `0x81`）；写成 ASCII 的 `0x2c`/`0x2e` 会画成
++   字母 `s` 和 `t`。CJK 页字节后面的字形序号跳过不动。
++
++改名界面字母表里的 `.` `,` 两格本来就指向 `0x81`/`0x82`，字库换回美版后自动
++显示为英文标点，不需要额外覆盖。
 +
 +## 界面文案（设置 / 按键映射）
 +
@@ -1363,10 +1400,10 @@ index 0000000..acd9b6e
 +    print('%s: %d bytes (CRC32 %08x)' % (sys.argv[3], len(result), zlib.crc32(result)))
 diff --git a/tools/zh/build_zh.py b/tools/zh/build_zh.py
 new file mode 100644
-index 0000000..4553ba6
+index 0000000..b2cbab2
 --- /dev/null
 +++ b/tools/zh/build_zh.py
-@@ -0,0 +1,140 @@
+@@ -0,0 +1,173 @@
 +#!/usr/bin/env python3
 +"""Build lttp-ds.nds with the Chinese translation.
 +
@@ -1399,6 +1436,30 @@ index 0000000..4553ba6
 +ROM_SHA256 = "66871d66be19ad2c34c927d6b14cd8eb6fc3181965b6e517cb361f7316009cfb"
 +PACK_MAGIC = b"ZCNB"
 +FOOTER_MAGIC = b"ZCNP"
++
++# The 3DS pack reuses two Latin font slots for the Chinese comma and full
++# stop. With the original Latin font restored those byte values draw the
++# letter "I", so translate them to the cartridge's own punctuation codes in
++# the dialogue text. This engine does not use ASCII: the glyph tile is
++# (code & 0x70) * 2 + (code & 0xf), so "," is 0x42 (tile 0x82) and "." is
++# 0x41 (tile 0x81); 0x2c/0x2e would draw "s" and "t". Bytes after a CJK page
++# marker are glyph indices: leave those alone, they are not characters.
++PUNCT = {0x5F: 0x42, 0x60: 0x41}  # ，-> ,  and  。-> .
++CJK_PAGES = range(0xF0, 0xF5)
++DIALOGUE_OFFSETS = 397 * 2  # u16 message offsets at the start of the block
++
++
++def to_ascii_punctuation(text):
++    out = bytearray(text)
++    i = DIALOGUE_OFFSETS
++    while i < len(out):
++        if out[i] in CJK_PAGES:
++            i += 2          # page byte + glyph index, copied verbatim
++            continue
++        if out[i] in PUNCT:
++            out[i] = PUNCT[out[i]]
++        i += 1
++    return bytes(out)
 +
 +
 +def fail(message):
@@ -1479,11 +1540,20 @@ index 0000000..4553ba6
 +    assets, names, header = inject_zh_assets.split_assets(extracted.read_bytes())
 +    dialogue, font = inject_zh_assets.read_pack(pack)
 +
-+    # Keep the pack's Latin font as-is. It redefines tile 0xaf as a comma,
-+    # while the cartridge's name-entry keyboard indexes 0xaf as "I".
-+    # Swapping the whole Latin area back would fix the I but turn every
-+    # Chinese comma into an I, so zh_select.c gives just that one keyboard
-+    # cell its own glyph tile instead.
++    # The pack replaces part of the Latin font with Chinese punctuation,
++    # including the tile the name-entry keyboard uses for "I", so "I" draws
++    # as a comma and, once restored, the punctuation bytes draw letters.
++    # Restore the original 4096 Latin bytes; the CJK glyphs start at
++    # offset 4096 and the width table is a separate block, so neither
++    # moves and Chinese dialogue is untouched. The dialogue's punctuation
++    # bytes are remapped to the cartridge's own "," and "." codes above.
++    latin = inject_zh_assets.unpack_blocks(
++        assets[inject_zh_assets.FIDX])[0][2:4098]
++    if len(latin) != 4096 or len(font) <= 4100:
++        fail("unexpected font block layout")
++    font = font[:4] + latin + font[4100:]
++
++    dialogue = to_ascii_punctuation(dialogue)
 +    assets[inject_zh_assets.DIDX] = inject_zh_assets.pack_blocks([dialogue])
 +    assets[inject_zh_assets.FIDX] = inject_zh_assets.pack_blocks([font])
 +    entry = inject_zh_assets.pack_blocks(

@@ -31,6 +31,30 @@ ROM_SHA256 = "66871d66be19ad2c34c927d6b14cd8eb6fc3181965b6e517cb361f7316009cfb"
 PACK_MAGIC = b"ZCNB"
 FOOTER_MAGIC = b"ZCNP"
 
+# The 3DS pack reuses two Latin font slots for the Chinese comma and full
+# stop. With the original Latin font restored those byte values draw the
+# letter "I", so translate them to the cartridge's own punctuation codes in
+# the dialogue text. This engine does not use ASCII: the glyph tile is
+# (code & 0x70) * 2 + (code & 0xf), so "," is 0x42 (tile 0x82) and "." is
+# 0x41 (tile 0x81); 0x2c/0x2e would draw "s" and "t". Bytes after a CJK page
+# marker are glyph indices: leave those alone, they are not characters.
+PUNCT = {0x5F: 0x42, 0x60: 0x41}  # ，-> ,  and  。-> .
+CJK_PAGES = range(0xF0, 0xF5)
+DIALOGUE_OFFSETS = 397 * 2  # u16 message offsets at the start of the block
+
+
+def to_ascii_punctuation(text):
+    out = bytearray(text)
+    i = DIALOGUE_OFFSETS
+    while i < len(out):
+        if out[i] in CJK_PAGES:
+            i += 2          # page byte + glyph index, copied verbatim
+            continue
+        if out[i] in PUNCT:
+            out[i] = PUNCT[out[i]]
+        i += 1
+    return bytes(out)
+
 
 def fail(message):
     sys.stderr.write("zh: " + message.rstrip() + "\n")
@@ -110,11 +134,20 @@ def main():
     assets, names, header = inject_zh_assets.split_assets(extracted.read_bytes())
     dialogue, font = inject_zh_assets.read_pack(pack)
 
-    # Keep the pack's Latin font as-is. It redefines tile 0xaf as a comma,
-    # while the cartridge's name-entry keyboard indexes 0xaf as "I".
-    # Swapping the whole Latin area back would fix the I but turn every
-    # Chinese comma into an I, so zh_select.c gives just that one keyboard
-    # cell its own glyph tile instead.
+    # The pack replaces part of the Latin font with Chinese punctuation,
+    # including the tile the name-entry keyboard uses for "I", so "I" draws
+    # as a comma and, once restored, the punctuation bytes draw letters.
+    # Restore the original 4096 Latin bytes; the CJK glyphs start at
+    # offset 4096 and the width table is a separate block, so neither
+    # moves and Chinese dialogue is untouched. The dialogue's punctuation
+    # bytes are remapped to the cartridge's own "," and "." codes above.
+    latin = inject_zh_assets.unpack_blocks(
+        assets[inject_zh_assets.FIDX])[0][2:4098]
+    if len(latin) != 4096 or len(font) <= 4100:
+        fail("unexpected font block layout")
+    font = font[:4] + latin + font[4100:]
+
+    dialogue = to_ascii_punctuation(dialogue)
     assets[inject_zh_assets.DIDX] = inject_zh_assets.pack_blocks([dialogue])
     assets[inject_zh_assets.FIDX] = inject_zh_assets.pack_blocks([font])
     entry = inject_zh_assets.pack_blocks(
