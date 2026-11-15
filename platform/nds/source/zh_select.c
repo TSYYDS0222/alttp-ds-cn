@@ -31,8 +31,36 @@ enum {
 	kZhBankEnd = 0x200,    /* tile 0x200 would wrap to VRAM 0 */
 	kZhAttr = 0x1800,      /* palette 6, low priority */
 	kZhSpaceTop = 0x18a9,  /* the font's blank tile, top half */
-	kZhSpaceBot = 0x18b9   /* ... and its bottom half */
+	kZhSpaceBot = 0x18b9,  /* ... and its bottom half */
+	/* The Chinese pack maps tile 0xaf to a comma, but the cartridge's
+	 * name-entry keyboard indexes 0xaf as the letter I. Leave the pack's
+	 * font alone (all its commas stay commas) and give this single keyboard
+	 * cell its own I glyph in two otherwise unused BG3 tiles. */
+	kZhITop = 0x1e0,       /* VRAM 0x7f00 */
+	kZhIBottom = 0x1f0,    /* VRAM 0x7f80, the font's usual +0x10 half */
+	kZhNameIRow = 16,      /* first row of the keyboard's A-J line */
+	kZhNameICol = 18       /* ninth cell: A B C D E F G H I J */
 };
+
+/* The USA font's I (tiles 0xaf / 0xbf): eight 2bpp words per half. */
+static const uint16 kZhIGlyph[16] = {
+	0x0000, 0x0038, 0x1028, 0x1028, 0x1028, 0x1028, 0x1028, 0x1028,
+	0x1028, 0x1028, 0x1028, 0x1028, 0x1028, 0x0038, 0x0000, 0x0000
+};
+
+static void zh_name_i(uint16 *vram)
+{
+	int i;
+
+	for (i = 0; i < 8; i++) {
+		vram[kZhTiles + kZhITop * 8 + i] = kZhIGlyph[i];
+		vram[kZhTiles + kZhIBottom * 8 + i] = kZhIGlyph[8 + i];
+	}
+	vram[kZhMap + kZhNameIRow * 32 + kZhNameICol] =
+		(uint16)(kZhAttr | kZhITop);
+	vram[kZhMap + (kZhNameIRow + 1) * 32 + kZhNameICol] =
+		(uint16)(kZhAttr | kZhIBottom);
+}
 
 typedef struct {
 	uint8 row;             /* first of the two 8-pixel rows */
@@ -178,6 +206,7 @@ void ZeldaZhSelectPatch(void)
 		break;
 	case 4:
 		zh_screen(kLinesName, sizeof kLinesName / sizeof kLinesName[0], vram);
+		zh_name_i(vram);
 		break;
 	default:
 		break;

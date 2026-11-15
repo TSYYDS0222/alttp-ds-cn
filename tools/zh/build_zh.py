@@ -110,20 +110,11 @@ def main():
     assets, names, header = inject_zh_assets.split_assets(extracted.read_bytes())
     dialogue, font = inject_zh_assets.read_pack(pack)
 
-    # The 3DS pack ships its own 4096-byte Latin font: 383 bytes differ from
-    # the USA cartridge's, and tile 0xaf (the "I" of the cartridge's name
-    # entry keyboard) is a comma there. The ROM's own UI reads those tiles
-    # by index, so keep the original Latin tiles and take only the pack's
-    # CJK glyphs, which start at offset 4096 of the wide block, plus its
-    # width table. Nothing after the Latin area moves, so CJK rendering is
-    # untouched. The original asset is PackBlocks: 2-byte offset table,
-    # 4096 Latin bytes, 99 widths, 2-byte trailer.
-    latin = inject_zh_assets.unpack_blocks(
-        assets[inject_zh_assets.FIDX])[0][2:4098]
-    if len(latin) != 4096 or len(font) <= 4100:
-        fail("unexpected font block layout")
-    font = font[:4] + latin + font[4100:]
-
+    # Keep the pack's Latin font as-is. It redefines tile 0xaf as a comma,
+    # while the cartridge's name-entry keyboard indexes 0xaf as "I".
+    # Swapping the whole Latin area back would fix the I but turn every
+    # Chinese comma into an I, so zh_select.c gives just that one keyboard
+    # cell its own glyph tile instead.
     assets[inject_zh_assets.DIDX] = inject_zh_assets.pack_blocks([dialogue])
     assets[inject_zh_assets.FIDX] = inject_zh_assets.pack_blocks([font])
     entry = inject_zh_assets.pack_blocks(

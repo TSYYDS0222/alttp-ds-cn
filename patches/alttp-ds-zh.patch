@@ -650,10 +650,10 @@ index 9b53654..6b9b8a6 100644
  void ZeldaVideoSetNewRenderer(int on);
 diff --git a/platform/nds/source/zh_select.c b/platform/nds/source/zh_select.c
 new file mode 100644
-index 0000000..2b4cef0
+index 0000000..7ceb699
 --- /dev/null
 +++ b/platform/nds/source/zh_select.c
-@@ -0,0 +1,185 @@
+@@ -0,0 +1,214 @@
 +/* Chinese titles for the file-select, copy, erase and name-entry screens.
 + *
 + * Those screens are not part of the 397 translated dialogue messages: their
@@ -687,8 +687,36 @@ index 0000000..2b4cef0
 +	kZhBankEnd = 0x200,    /* tile 0x200 would wrap to VRAM 0 */
 +	kZhAttr = 0x1800,      /* palette 6, low priority */
 +	kZhSpaceTop = 0x18a9,  /* the font's blank tile, top half */
-+	kZhSpaceBot = 0x18b9   /* ... and its bottom half */
++	kZhSpaceBot = 0x18b9,  /* ... and its bottom half */
++	/* The Chinese pack maps tile 0xaf to a comma, but the cartridge's
++	 * name-entry keyboard indexes 0xaf as the letter I. Leave the pack's
++	 * font alone (all its commas stay commas) and give this single keyboard
++	 * cell its own I glyph in two otherwise unused BG3 tiles. */
++	kZhITop = 0x1e0,       /* VRAM 0x7f00 */
++	kZhIBottom = 0x1f0,    /* VRAM 0x7f80, the font's usual +0x10 half */
++	kZhNameIRow = 16,      /* first row of the keyboard's A-J line */
++	kZhNameICol = 18       /* ninth cell: A B C D E F G H I J */
 +};
++
++/* The USA font's I (tiles 0xaf / 0xbf): eight 2bpp words per half. */
++static const uint16 kZhIGlyph[16] = {
++	0x0000, 0x0038, 0x1028, 0x1028, 0x1028, 0x1028, 0x1028, 0x1028,
++	0x1028, 0x1028, 0x1028, 0x1028, 0x1028, 0x0038, 0x0000, 0x0000
++};
++
++static void zh_name_i(uint16 *vram)
++{
++	int i;
++
++	for (i = 0; i < 8; i++) {
++		vram[kZhTiles + kZhITop * 8 + i] = kZhIGlyph[i];
++		vram[kZhTiles + kZhIBottom * 8 + i] = kZhIGlyph[8 + i];
++	}
++	vram[kZhMap + kZhNameIRow * 32 + kZhNameICol] =
++		(uint16)(kZhAttr | kZhITop);
++	vram[kZhMap + (kZhNameIRow + 1) * 32 + kZhNameICol] =
++		(uint16)(kZhAttr | kZhIBottom);
++}
 +
 +typedef struct {
 +	uint8 row;             /* first of the two 8-pixel rows */
@@ -834,6 +862,7 @@ index 0000000..2b4cef0
 +		break;
 +	case 4:
 +		zh_screen(kLinesName, sizeof kLinesName / sizeof kLinesName[0], vram);
++		zh_name_i(vram);
 +		break;
 +	default:
 +		break;
@@ -1106,10 +1135,10 @@ index 0000000..ecb8533
 +const unsigned short zh_ui_empty[] = { 0xffff };
 diff --git a/tools/zh/README.md b/tools/zh/README.md
 new file mode 100644
-index 0000000..f8dc825
+index 0000000..98d48c1
 --- /dev/null
 +++ b/tools/zh/README.md
-@@ -0,0 +1,142 @@
+@@ -0,0 +1,143 @@
 +# 中文化（简体中文）说明
 +
 +`alttp-ds` 是 zelda3 重制工程的 NDS 移植（ARM9 原生运行游戏逻辑）。本目录把它
@@ -1172,12 +1201,13 @@ index 0000000..f8dc825
 +
 +3DS 汉化包自带一套 4096 字节的拉丁字库，其中约 383 字节与美版卡带不同：
 +tile `0xaf` 在汉化字库里是**逗号**，而卡带的改名界面字母表按 tile 索引把
-+`0xaf` 当字母 **I** 用，于是 I 会显示成 `,`。文件选择、改名等 ROM 自带界面
-+都是这样直接按索引取字的。
++`0xaf` 当字母 **I** 用。两者冲突：整块换回美版字库能让 I 回来，但汉化字库
++里所有用 `0xaf` 的逗号也会跟着变成 I；反过来则 I 一直显示成逗号。
 +
-+`build_zh.py` 注入时把 font 块数据区的前 4096 字节换回美版原版字母字库，
-+后面的 1163 个 CJK 字形（`kDialogueCjkFontOffset = 4096`）和宽度表原样保留。
-+总长与所有偏移都不变，所以中文对白渲染完全不受影响。
++所以字库保持汉化版原样不动，改的是那一格 tilemap：`zh_select.c` 在改名界面
++给第九个字母格（BG3 tilemap row 16/17、col 18）单独造一对私有字形 tile
++（`0x1e0`/`0x1f0`，内容是美版字库的 I 点阵），并把这两条 tilemap 条目指过去。
++其余逗号、中文对白、CJK 字形与宽度表完全不受影响。
 +
 +## 界面文案（设置 / 按键映射）
 +
@@ -1333,10 +1363,10 @@ index 0000000..acd9b6e
 +    print('%s: %d bytes (CRC32 %08x)' % (sys.argv[3], len(result), zlib.crc32(result)))
 diff --git a/tools/zh/build_zh.py b/tools/zh/build_zh.py
 new file mode 100644
-index 0000000..2804c4d
+index 0000000..4553ba6
 --- /dev/null
 +++ b/tools/zh/build_zh.py
-@@ -0,0 +1,149 @@
+@@ -0,0 +1,140 @@
 +#!/usr/bin/env python3
 +"""Build lttp-ds.nds with the Chinese translation.
 +
@@ -1449,20 +1479,11 @@ index 0000000..2804c4d
 +    assets, names, header = inject_zh_assets.split_assets(extracted.read_bytes())
 +    dialogue, font = inject_zh_assets.read_pack(pack)
 +
-+    # The 3DS pack ships its own 4096-byte Latin font: 383 bytes differ from
-+    # the USA cartridge's, and tile 0xaf (the "I" of the cartridge's name
-+    # entry keyboard) is a comma there. The ROM's own UI reads those tiles
-+    # by index, so keep the original Latin tiles and take only the pack's
-+    # CJK glyphs, which start at offset 4096 of the wide block, plus its
-+    # width table. Nothing after the Latin area moves, so CJK rendering is
-+    # untouched. The original asset is PackBlocks: 2-byte offset table,
-+    # 4096 Latin bytes, 99 widths, 2-byte trailer.
-+    latin = inject_zh_assets.unpack_blocks(
-+        assets[inject_zh_assets.FIDX])[0][2:4098]
-+    if len(latin) != 4096 or len(font) <= 4100:
-+        fail("unexpected font block layout")
-+    font = font[:4] + latin + font[4100:]
-+
++    # Keep the pack's Latin font as-is. It redefines tile 0xaf as a comma,
++    # while the cartridge's name-entry keyboard indexes 0xaf as "I".
++    # Swapping the whole Latin area back would fix the I but turn every
++    # Chinese comma into an I, so zh_select.c gives just that one keyboard
++    # cell its own glyph tile instead.
 +    assets[inject_zh_assets.DIDX] = inject_zh_assets.pack_blocks([dialogue])
 +    assets[inject_zh_assets.FIDX] = inject_zh_assets.pack_blocks([font])
 +    entry = inject_zh_assets.pack_blocks(
