@@ -174,7 +174,25 @@ def main():
         assets[inject_zh_assets.FIDX])[0][2:4098]
     if len(latin) != 4096 or len(font) <= 4100:
         fail("unexpected font block layout")
-    font = font[:4] + draw_brackets(latin) + font[4100:]
+
+    # The dialogue's Chinese full stop is remapped to 0x41 (the cartridge's
+    # English "." code) and its question mark already uses 0x62. Both slots
+    # are filled/blank in the restored USA atlas, so copy the translation
+    # pack's own glyphs for "。" and "？" into them. Leaving the dialogue
+    # bytes alone keeps the name-entry letter grid untouched.
+    pack_glyph, _ = inject_zh_assets.unpack_blocks(font)
+    latin = bytearray(latin)
+    for src, dst in ((0x60, 0x41), (0x62, 0x62)):
+        s, d = tile_no(src), tile_no(dst)
+        for half in range(2):
+            sr, dr = s + half * 16, d + half * 16
+            latin[dr * 16:(dr + 1) * 16] = pack_glyph[sr * 16:(sr + 1) * 16]
+
+    font = bytearray(font[:4] + draw_brackets(bytes(latin)) + font[4100:])
+    # A Chinese full stop is full width; the English "." entry is only 4px.
+    # Widths live in the font's second block, right after the glyph block.
+    font[4 + len(pack_glyph) + 0x41] = 8
+    font = bytes(font)
 
     dialogue = to_ascii_punctuation(dialogue)
     assets[inject_zh_assets.DIDX] = inject_zh_assets.pack_blocks([dialogue])
