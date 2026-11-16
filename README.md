@@ -10,10 +10,10 @@
 
 本仓库的 [`zh-cn`](https://github.com/TSYYDS0222/alttp-ds-cn/tree/zh-cn) 分支是 [JimmyGlasscock/alttp-ds](https://github.com/JimmyGlasscock/alttp-ds) 的简体中文汉化：游戏逻辑原样保留，只替换对白文本、字库和界面标签。
 
-- **直接下载**：[Releases](https://github.com/TSYYDS0222/alttp-ds-cn/releases/latest) 里提供预编译的 `lttp-ds-zh.nds` 和完整源码包，烧到烧录卡或用 melonDS 打开即可，不需要自己编译。
+- **只发布源码**：本仓库和 [Releases](https://github.com/TSYYDS0222/alttp-ds-cn/releases/latest) 都不提供编译好的 `.nds`，因为成品里内嵌了游戏数据。请自备美版 ROM 编译。
 - **已汉化**：全部对白与开场故事、设置菜单、按键说明、文件选择 / 复制 / 删除 / 改名界面、下屏装备栏（道具、瓶子、吊坠、水晶、心之碎片、钥匙）。
 - **保留英文**：改名界面的 `END` 按钮和拉丁字母表、数字 —— 受卡带原有字母网格限制，改动会挤乱整个页面。标点用英文 `,` `.`。
-- **自己编译**：需要美版 `zelda3.sfc` 放进 `vendor/zelda3/assets/`，然后 `python3 build.py`（devkitPro + libnds）。
+- **自己编译**：`git clone -b zh-cn`（或下载 Releases 里的源码包），把美版 `zelda3.sfc` 放进 `vendor/zelda3/assets/`，然后 `python3 build.py`（devkitPro + libnds）。
 - **汉化实现与踩坑记录**：[`tools/zh/README.md`](tools/zh/README.md)（字库块布局、字符码到字形的映射、UI 点阵字的烘焙方式）。
 - **字体与文本来源**：[frilxy/zelda-alttp-3ds-cn](https://github.com/frilxy/zelda-alttp-3ds-cn)（3DS 汉化包 `zh.bps`），汉化作者 [sxunix/zelda3](https://github.com/sxunix/zelda3)。
 
