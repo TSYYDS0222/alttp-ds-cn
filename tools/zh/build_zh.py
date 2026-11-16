@@ -42,6 +42,35 @@ PUNCT = {0x5F: 0x42, 0x60: 0x41}  # ，-> ,  and  。-> .
 CJK_PAGES = range(0xF0, 0xF5)
 DIALOGUE_OFFSETS = 397 * 2  # u16 message offsets at the start of the block
 
+# The 3DS translation writes [ and ] into those two character codes. Both the
+# USA font and the translation pack leave the slots as filled blocks, so the
+# NDS build showed black rectangles in dialogue. Draw the brackets ourselves
+# in the restored Latin atlas (2bpp, one 8x8 tile plus the tile 16 slots on).
+BRACKET_ROWS = {
+    0x5B: [".######."] + [".#......"] * 14 + [".######."],
+    0x5D: [".######."] + ["......#."] * 14 + [".######."],
+}
+
+
+def tile_no(code):
+    return ((code & 0x70) * 2) + (code & 0x0F)
+
+
+def draw_brackets(latin):
+    out = bytearray(latin)
+    for code, rows in BRACKET_ROWS.items():
+        assert len(rows) == 16 and all(len(r) == 8 for r in rows)
+        for half in range(2):
+            tile = tile_no(code) + half * 16
+            for y in range(8):
+                bits = 0
+                for x, ch in enumerate(rows[half * 8 + y]):
+                    if ch == "#":
+                        bits |= 0x80 >> x
+                out[(tile * 16) + y * 2] = bits
+                out[(tile * 16) + y * 2 + 1] = 0
+    return bytes(out)
+
 
 def to_ascii_punctuation(text):
     out = bytearray(text)
@@ -145,7 +174,7 @@ def main():
         assets[inject_zh_assets.FIDX])[0][2:4098]
     if len(latin) != 4096 or len(font) <= 4100:
         fail("unexpected font block layout")
-    font = font[:4] + latin + font[4100:]
+    font = font[:4] + draw_brackets(latin) + font[4100:]
 
     dialogue = to_ascii_punctuation(dialogue)
     assets[inject_zh_assets.DIDX] = inject_zh_assets.pack_blocks([dialogue])

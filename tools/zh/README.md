@@ -75,6 +75,18 @@ frilxy/zelda-alttp-3ds-cn 及其译者，引擎代码仍是 zelda3 的 MIT 许�
 改名界面字母表里的 `.` `,` 两格本来就指向 `0x81`/`0x82`，字库换回美版后自动
 显示为英文标点，不需要额外覆盖。
 
+同理，汉化对白里的 `[` `]` 用 `0x5b`/`0x5d`，而这两格在美版字库和汉化包里都是
+没填充的实心块（「按 A 键」这类提示里会看到黑方块）。`draw_brackets()` 在换回
+美版字库后往这两个槽位直接画 8×16 的方括号，不改对白字节。
+
+`tools/zh/preview_msg.py` 可以把某条对白按引擎的字形布局画成 PNG，不用模拟器
+就能检查标点和汉字：
+
+```sh
+python tools/zh/preview_msg.py zelda3_assets.dat 16 line16.png 4
+python tools/zh/preview_msg.py zelda3_assets.dat --list-brackets
+```
+
 ## 界面文案（设置 / 按键映射）
 
 投影片层（`settings_draw`、`buttons_draw`）原本用卡带的 8×16 字母字库画英文。汉字
