@@ -38,7 +38,11 @@ FOOTER_MAGIC = b"ZCNP"
 # (code & 0x70) * 2 + (code & 0xf), so "," is 0x42 (tile 0x82) and "." is
 # 0x41 (tile 0x81); 0x2c/0x2e would draw "s" and "t". Bytes after a CJK page
 # marker are glyph indices: leave those alone, they are not characters.
-PUNCT = {0x5F: 0x42, 0x60: 0x41}  # ，-> ,  and  。-> .
+PUNCT = {0x5F: 0x42, 0x60: 0x63}  # ，-> ,  and  。-> our Chinese full stop slot
+# 0x63 is unused by both the dialogue and the USA font (an empty glyph and a
+# full-width width entry), so the Chinese "。" can live there without taking
+# over the English "." code 0x41 that the name-entry grid also uses.
+FULLSTOP_SLOT = 0x63
 CJK_PAGES = range(0xF0, 0xF5)
 DIALOGUE_OFFSETS = 397 * 2  # u16 message offsets at the start of the block
 
@@ -175,17 +179,18 @@ def main():
     if len(latin) != 4096 or len(font) <= 4100:
         fail("unexpected font block layout")
 
-    # The dialogue's Chinese "！" and "？" use codes 0x61 and 0x62. Both slots
-    # are a filled bar / blank in the restored USA atlas, so copy the
-    # translation pack's own glyphs into them. The English "." (0x41) stays
-    # as the cartridge drew it; dialogue bytes and the name-entry letter
-    # grid are left untouched.
+    # Copy the pack's own glyphs for the Chinese full stop, "！" and "？" into
+    # slots the dialogue actually uses. "。" goes to the unused 0x63 so the
+    # English "." (0x41, also used by the name-entry letter grid) is left as
+    # the cartridge drew it; 0x61/0x62 are a filled bar / blank in the USA
+    # atlas. Dialogue bytes other than the full stop and the letter grid are
+    # untouched.
     pack_glyph, _ = inject_zh_assets.unpack_blocks(font)
     latin = bytearray(latin)
-    for code in (0x61, 0x62):
-        t = tile_no(code)
+    for src, dst in ((0x60, FULLSTOP_SLOT), (0x61, 0x61), (0x62, 0x62)):
+        s, d = tile_no(src), tile_no(dst)
         for half in range(2):
-            sr = dr = t + half * 16
+            sr, dr = s + half * 16, d + half * 16
             latin[dr * 16:(dr + 1) * 16] = pack_glyph[sr * 16:(sr + 1) * 16]
 
     font = bytes(font[:4] + draw_brackets(bytes(latin)) + font[4100:])
