@@ -185,14 +185,21 @@ def main():
     # the cartridge drew it; 0x61/0x62 are a filled bar / blank in the USA
     # atlas. Dialogue bytes other than the full stop and the letter grid are
     # untouched.
+    # 0x67/0x68 are the button-icon brackets (")" and "(") the pack draws
+    # around [A]/[B] prompts. They are >= kTextCommandStart_US but fall in
+    # the EU "letter" range, so they render as glyphs; the USA atlas has
+    # filled blocks there, which show up as red garbage in dialogue.
     pack_glyph, _ = inject_zh_assets.unpack_blocks(font)
     latin = bytearray(latin)
-    for src, dst in ((0x60, FULLSTOP_SLOT), (0x61, 0x61), (0x62, 0x62)):
+    for src, dst in ((0x60, FULLSTOP_SLOT), (0x61, 0x61), (0x62, 0x62),
+                     (0x67, 0x67), (0x68, 0x68)):
         s, d = tile_no(src), tile_no(dst)
         for half in range(2):
             sr, dr = s + half * 16, d + half * 16
             latin[dr * 16:(dr + 1) * 16] = pack_glyph[sr * 16:(sr + 1) * 16]
 
+    # The width block is kept from the pack (font[4100:]), so codes above the
+    # USA 99-entry table still advance 8px.
     font = bytes(font[:4] + draw_brackets(bytes(latin)) + font[4100:])
 
     dialogue = to_ascii_punctuation(dialogue)
